@@ -1,0 +1,4 @@
+# DP2 Test Suite
+This is the code to test our DP2 schemes. datacenter.py has the main code for the virtual datacenter, and machine.py has the code for the virtual machine and physical machine simulation classes. Eventually there will be a test.py file which has all of the testing code that uses this stuff, and we can plug our mockup solutions into that.
+
+## WIP!!
