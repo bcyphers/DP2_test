@@ -154,11 +154,13 @@ class DataCenter(object):
         # we can't actually have throughput greater than 10 mbps
         return 2 * self.THROUGHPUT / max(max_connects, 2)
 
+    def _get_group(self, vm):
+        return int(vm.machine / self.GROUP_SIZE)
+
     # Update the state of the data center
     def _tick(self):
         delta_t = time.time() - self.time
         self.time = time.time()
         
         for u in self.VMs.iteritems():
-            # do shit
-            pass
+            throughput = self._get_link_speed(self._get_group(vm) )
