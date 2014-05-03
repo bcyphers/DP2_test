@@ -1,5 +1,18 @@
-import sys, math, random, time
+import sys, math, random, time, itertools
 from machine import Machine, VirtualMachine
+from collections import defaultdict
+
+# If true, print extra info
+VERBOSE = False
+
+# Helper class for text colors
+class bcolors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
 
 class DataCenter(object):
     NUM_MACHINES = 1152
@@ -16,6 +29,9 @@ class DataCenter(object):
         self.groups = {i: [self.machines[j] for j in xrange(
             i * self.GROUP_SIZE, (i + 1) * self.GROUP_SIZE)] 
             for i in xrange(self.NUM_GROUPS)}
+
+        # users keeps track of how much total time each user's VMs have used
+        self.users = defaultdict(float)
 
         # Links are represented as tuples: (lower level, upper level)
         # each link points to a list of the connections it currently serves.
@@ -46,8 +62,9 @@ class DataCenter(object):
             self.vm_by_ip[ip] = v
             self.VMs[v.ID] = v
             v.machine = m
-            counter = 0
+            v.ip = ip
 
+            counter = 0
             # add a link for each one of this VM's connections in the system
             for target in v.transfers.iterkeys():
                 if target in self.VMs:
@@ -62,8 +79,9 @@ class DataCenter(object):
                     u.activate_transfer(v.ID, ip)
                     counter += 1
 
-            print 'Added VM with ip', ip, 'to machine', m
-            print counter, 'links added'
+            if VERBOSE:
+                print 'Added VM with ip', ip, 'to machine', m
+                print counter, 'links added'
             return ip
 
         print 'Tried to add to machine ' + str(m) + ', which is full'
@@ -81,14 +99,27 @@ class DataCenter(object):
             # If the list of valid machines is empty, the whole center is full
             raise Exception('No machines available')
 
-        print 'Placing VM at random machine, id =', m
+        if VERBOSE:
+            print 'Placing VM at random machine, id =', m
         return m, self.place(v, m)
+
+    # Remove VM v from the network
+    def remove(self, vid):
+        v = self.VMs[vid]
+        self.machines[v.machine].remove_vm(v)
+        del self.VMs[vid]
+        del self.vm_by_ip[v.ip]
 
     # Return the number of bytes left to transfer between u and v
     # TODO: find out what this actually means
     def progress(self, u, v):
         self._update()
         return u.to_transfer(v.ID) + v.to_transfer(u.ID)
+
+    # Get the total amount of time a user has clocked
+    def user_time(self, usr):
+        self._update()
+        return self.users[usr]
 
     # Return the number of VMs on machine m
     def machine_occupancy(self, m):
@@ -99,7 +130,49 @@ class DataCenter(object):
     # the last 100ms
     # TODO: figure out how - this gets the current link speed; not the same
     def tcp_throughput(self, u, v):
+        self._update()
         return self._get_link_speed(self._get_group(u), self._get_group(v))
+
+    # Prints out a full representation of everything in the system right now
+    def draw_status(self):
+        self._update()
+
+        # clear the screen
+        print chr(27) + "[2J"
+
+        # print the system time
+        print bcolors.HEADER + 'SYSTEM TIME: ' + bcolors.ENDC +\
+                str(self.time - self.start_time) + '\n'
+
+        # print link congestion stats: how many connections are using each?
+        print bcolors.HEADER + 'LINK CONGESTION:' + bcolors.ENDC
+        print bcolors.GREEN + ' * core links: ' + bcolors.ENDC +\
+                    '; '.join(str(l) + ': ' + 
+                    bcolors.YELLOW + str(len(num)) + bcolors.ENDC 
+                    for l, num in self.core_links.items())
+        print bcolors.GREEN + ' * aggregate links:\n   ' + bcolors.ENDC +\
+            '\n   '.join(
+                    '; '.join(str(l[0]) + '<->' + str(l[1]) + ': ' + 
+                        bcolors.YELLOW + str(len(num)) + bcolors.ENDC
+            for l, num in sorted(self.agg_links.items()) if l[1] == i) 
+            for i in range(self.AGG_ROUTERS)) 
+
+        # print the number of VMs in each group
+        print bcolors.HEADER + '\nTOTAL VMs BY GROUP:' + bcolors.ENDC
+        print '   ' + '\n   '.join(
+                '  '.join(str(g) + ': ' + 
+                    bcolors.YELLOW + 
+                        str(sum(len(m.VMs) for m in self.groups[g])) +
+                    bcolors.ENDC
+                    for g in self.groups if int(g/6) == i) 
+                for i in range(self.AGG_ROUTERS))
+        
+        # print the total amount of time each user has used
+        print bcolors.HEADER + '\nTOTAL TIME BY USER:' + bcolors.ENDC
+        print '   ' + '\n   '.join(
+                'ID ' + str(usr) + ': ' +
+                bcolors.YELLOW + str(value) + bcolors.ENDC
+                for usr, value in self.users.items())
 
     # Get a random, unused ip for a VM
     def _get_rand_ip(self):
@@ -173,14 +246,7 @@ class DataCenter(object):
 
         # count the connections on all the links between g1 & g2, 
         # and take the max
-        try:
-            max_connects = max(len(link) for link in links)
-        except ValueError as v:
-            # debugging code: this keeps throwing errors for some reason
-            print v
-            print sorted(self.agg_links.iteritems())
-            print sorted(self.core_links.iteritems())
-            print g1, g2
+        max_connects = max(len(link) for link in links)
 
         # we can't actually have throughput greater than 10 mbps
         return 2 * self.THROUGHPUT / max(max_connects, 2)
@@ -191,7 +257,8 @@ class DataCenter(object):
         delta_t = now - self.time
         mttc = float('inf')  # min time to completion
         
-        for u in self.VMs.itervalues():
+        vms = self.VMs.values()
+        for u in vms:
             for vid in u.active_transfers.iterkeys():
                 amt = u.transfers[vid]
                 v = self.VMs[vid]
@@ -212,30 +279,21 @@ class DataCenter(object):
     # Set a new time
     def _set_time(self, time):
         self.time = time
-        print 'System time updated to', self.time, '+', \
+        if VERBOSE:
+            print 'System time updated to', self.time, '+', \
                 self.time - self.start_time
 
     # Jump forward in time, and transfer data along all active connections
     # at their current rates.
     def _roll_forward(self, delta):
-        for u in self.VMs.itervalues():
+        vms = self.VMs.values()
+        for u in vms:
+            self.users[u.user] += delta
+
             for vid in u.active_transfers.keys():
                 v = self.VMs[vid]
                 tp = self._get_link_speed(
                         self._get_group(u), self._get_group(v))
+
                 if u.transfer(vid, tp * delta):
                     self._remove_link(u, v)
-
-# This is some simple test code. It creates 100 VMs with a random B matrix,
-# and randomly places them in the data center one-by-one, with a 1 second
-# delay in between.
-if __name__ == '__main__':
-    dc = DataCenter()
-    B = tuple(tuple(random.randrange(100000) 
-                    if i != j else 0 for j in range(100)) 
-              for i in range(100))
-
-    for i in range(100):
-        vm = VirtualMachine(i, B)
-        dc.random_place(vm)
-        time.sleep(1)
