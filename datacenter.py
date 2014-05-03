@@ -46,20 +46,24 @@ class DataCenter(object):
             self.vm_by_ip[ip] = v
             self.VMs[v.ID] = v
             v.machine = m
-            
+            counter = 0
+
             # add a link for each one of this VM's connections in the system
             for target in v.transfers.iterkeys():
                 if target in self.VMs:
                     self._add_link(v, self.VMs[target])
                     v.activate_transfer(target, ip)
+                    counter += 1
 
             # check to see if other VMs in the system link to the new one
             for u in self.VMs.values():
                 if v.ID in u.transfers.iterkeys():
                     self._add_link(u, v)
                     u.activate_transfer(v.ID, ip)
+                    counter += 1
 
             print 'Added VM with ip', ip, 'to machine', m
+            print counter, 'links added'
             return ip
 
         print 'Tried to add to machine ' + str(m) + ', which is full'
@@ -131,8 +135,6 @@ class DataCenter(object):
             self.core_links[ag1].add((vm1.ID, vm2.ID))
             self.core_links[ag2].add((vm1.ID, vm2.ID))
 
-        print 'Added link from VM', vm1.ID, 'to VM', vm2.ID
-
     # Delete a link between two machines
     def _remove_link(self, vm1, vm2):
         m1 = vm1.machine
@@ -153,8 +155,6 @@ class DataCenter(object):
         if ag1 != ag2:
             self.core_links[ag1].remove((vm1.ID, vm2.ID))
             self.core_links[ag2].remove((vm1.ID, vm2.ID))
-
-        print 'Removed link from VM', vm1.ID, 'to VM', vm2.ID
 
     # What is the throughput (in MBPS) between two groups?
     # This assumes that all connections are given equal speeds
@@ -230,7 +230,7 @@ class DataCenter(object):
 # delay in between.
 if __name__ == '__main__':
     dc = DataCenter()
-    B = tuple(tuple(random.randrange(1000) * 10 ** random.randrange(3) 
+    B = tuple(tuple(random.randrange(100000) 
                     if i != j else 0 for j in range(100)) 
               for i in range(100))
 
