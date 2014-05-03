@@ -7,24 +7,47 @@ class VirtualMachine(object):
 
         # self.transfers keeps track of all the data which still has to
         # be transferred TO any given VM in the system.
-        self.transfers = {i: B[ID][i] for i in range(len(B))}
+        self.transfers = {i: B[ID][i] for i in range(len(B)) 
+                if i != ID and B[ID][i] > 0}
+
+        # active_transfers has the ip addressed for all currently running 
+        # transfers indexed by VMID
+        self.active_transfers = {}
 
     # Transfer data from self to another VM
+    # return True if the transfer terminated, False otherwise
+    # If no value for amount is supplied, transfer all data
     def transfer(self, vmid, amt=None):
         if amt == None:
-            self.transfers[vmid] = 0
+            del self.transfers[vmid]
+            del self.active_transfers[vmid]
+            print 'VM', self.ID,'- connection to', vmid, 'finished!'
+            return True
         else:
             self.transfers[vmid] -= amt
+            if self.transfers[vmid] < 0 - 10 ** -5:
+                raise Exception('Tried to transfer too much data from' +
+                        ' VM ' + str(self.ID) + ' to VM ' + str(vmid) + 
+                        '. New amount = ' + str(self.transfers[vmid]))
+            if self.transfers[vmid] < 10 ** -5:
+                del self.transfers[vmid]
+                del self.active_transfers[vmid]
+                print 'VM', self.ID,'- connection to', vmid, 'finished!'
+                return True
+
+        return False
 
     # How much data is left to transfer to vmid?
     def to_transfer(self, vmid):
         return self.transfers[vmid]
 
+    def activate_transfer(self, vmid, ip):
+        self.active_transfers[vmid] = ip
 
 class Machine(object):
-    def __init__(self, ID, VMs=[]):
-        self.ID = id_num
-        self.VMs = VMs
+    def __init__(self, ID, VMs=None):
+        self.ID = ID
+        self.VMs = VMs or []
 
     # Add a VM to the machine and return it, or return False
     def add_vm(self, VM):
