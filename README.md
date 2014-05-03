@@ -50,13 +50,13 @@ an OK approximation of how the data center should work, but it isn't exact. This
 should be fixed at some point.
 
 ### And remember:
-"Losers visualize the penalties of failure. Winners visualize the rewards of
+- "Losers visualize the penalties of failure. Winners visualize the rewards of
 success." - Unknown
-"The more you want to get something done, the less you call it work" - Richard
+- "The more you want to get something done, the less you call it work" - Richard
 Bach
-"To accomplish great things we must not only act, but also dream; not only
+- "To accomplish great things we must not only act, but also dream; not only
 plan, but also believe" - Anatole France
-"If you're going through hell, keep going" - Winston Churchill
-"An old pond. A frog jumps in. The sound of water." - Matsuo Basho
+- "If you're going through hell, keep going" - Winston Churchill
+- "An old pond. A frog jumps in. The sound of water." - Matsuo Basho
 
 ## This is a WIP!!
