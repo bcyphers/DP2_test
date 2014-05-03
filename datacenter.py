@@ -133,7 +133,6 @@ class DataCenter(object):
 
         print 'Added link from VM', vm1.ID, 'to VM', vm2.ID
 
-
     # Delete a link between two machines
     def _remove_link(self, vm1, vm2):
         m1 = vm1.machine

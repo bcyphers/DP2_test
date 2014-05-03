@@ -59,5 +59,3 @@ plan, but also believe" - Anatole France
 - "If you're going through hell, keep going" - Winston Churchill
 - "An old pond. A frog jumps in. The sound of water." - Matsuo Basho
 - "Sucking at something is the first step to being kinda good at something" - Jake the dog
-
-## This is a WIP!!
