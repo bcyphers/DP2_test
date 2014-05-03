@@ -1,9 +1,10 @@
 # DP2 Test Suite
 This is some code to test our DP2 schemes. datacenter.py has the main code for
 the virtual datacenter, and machine.py has the code for the virtual machine and
-physical machine simulation classes. Eventually there will be a test.py file
-which has all of the testing code that uses this stuff, and we can plug our
-mockup solutions into that.
+physical machine simulation classes. To try it, run 'python test.py' and watch
+\- it creates a single user with 20 randomly-generated VMs and adds them
+randomly to the network, then runs to completion.  Eventually we can add our
+solution logic to that and compare results.
 
 ### Outline of datacenter properties:
  - machines has 1152 Machine objects indexed by ID 
