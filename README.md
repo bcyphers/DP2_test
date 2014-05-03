@@ -38,7 +38,6 @@ connections, computes the throughput on the link for each, and then transfers
  - \_get\_link\_speed calculates througput in MBPS between any two \_groups\_.
 
 ### Some things that will/should change:
- - Right now, the \_roll\_forward function often goes too far, and ends up pullingtoo much data from one VM to another. Not sure why this is happening, but will try to fix next.
  - The data center should not need to know the VMs' ids in order to work; it
    should all happen through ip communication. I think adding a function like
 connect\_to\_ip() to DataCenter, and having VMs handle their own communication,

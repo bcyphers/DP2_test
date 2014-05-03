@@ -187,7 +187,8 @@ class DataCenter(object):
 
     # Update the state of the data center
     def _update(self):
-        delta_t = time.time() - self.time
+        now = time.time()
+        delta_t = now - self.time
         mttc = float('inf')  # min time to completion
         
         for u in self.VMs.itervalues():
@@ -206,7 +207,7 @@ class DataCenter(object):
             self._update()
         else:  # Otherwise, roll forward to the present
             self._roll_forward(delta_t)
-            self._set_time(time.time())
+            self._set_time(now)
 
     # Set a new time
     def _set_time(self, time):
