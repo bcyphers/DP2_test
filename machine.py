@@ -9,8 +9,7 @@ class VirtualMachine(object):
 
         # self.transfers keeps track of all the data which still has to
         # be transferred TO any given VM in the system.
-        self.transfers = {i: B[ID][i] for i in range(len(B)) 
-                if i != ID and B[ID][i] > 0}
+        self.transfers = {i: B[ID][i] for i in B if i != ID and B[ID][i] > 0}
 
         # active_transfers has the ip addressed for all currently running 
         # transfers indexed by VMID

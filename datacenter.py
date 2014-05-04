@@ -58,9 +58,9 @@ class DataCenter(object):
             raise Exception('Not a valid machine ID')
 
         if self.machines[m].add_vm(v):
-            ip = self._get_rand_ip()
-            self.vm_by_ip[ip] = v
-            self.VMs[v.ID] = v
+            ip = self._get_rand_ip()  # get an IP
+            self.vm_by_ip[ip] = v  # index VM by IP
+            self.VMs[v.ID] = v  # index VM by ID
             v.machine = m
             v.ip = ip
 
@@ -83,8 +83,10 @@ class DataCenter(object):
                 print 'Added VM with ip', ip, 'to machine', m
                 print counter, 'links added'
             return ip
-
-        print 'Tried to add to machine ' + str(m) + ', which is full'
+    
+        # machine.add_vm() will return false if the machine is full
+        if VERBOSE:
+            print 'Tried to add to machine ' + str(m) + ', which is full'
         return False
 
     # Place VM v on a random machine. Return the machine's id and the VM's ip
@@ -107,6 +109,19 @@ class DataCenter(object):
     def remove(self, vid):
         v = self.VMs[vid]
         self.machines[v.machine].remove_vm(v)
+
+        # Remove all the active outgoing links from this VM
+        for uid in v.transfers:
+            self._remove_link(v, self.VMs[uid])
+
+        # Find all incoming links and remove those, too
+        it = [[i for i in u.transfers if i == v.ID] 
+                for u in self.VMs.values()]
+        incoming_transfers = list(itertools.chain.from_iterable(it))
+
+        for u in incoming_transfers:
+            self._remove_link(u, v)
+
         del self.VMs[vid]
         del self.vm_by_ip[v.ip]
 
@@ -176,6 +191,7 @@ class DataCenter(object):
 
     # Get a random, unused ip for a VM
     def _get_rand_ip(self):
+        # append 4 random bytes, with periods, in a string
         rand_ip = lambda: '.'.join([str(random.randrange(256)) 
                                     for i in range(4)])
         ip = rand_ip()
