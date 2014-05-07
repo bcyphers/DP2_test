@@ -40,10 +40,8 @@ class DataCenter(object):
                     [(i, int(i/6)) for i in range(self.NUM_GROUPS)]}
         self.core_links = {link: set() for link in range(self.AGG_ROUTERS)}
 
-        # VMs stores VM objects indexed by ID
+        # stores VMs indexed by IP address
         self.VMs = {}
-        # self-explanatory, indexed by IP address
-        self.vm_by_ip = {}
 
         # this is the last time the system was updated
         self.time = time.time()
@@ -54,28 +52,27 @@ class DataCenter(object):
     # Place VM v on machine m, or return False if it is full
     def place(self, v, m):
         self._update()
-        if v.ID in self.VMs:
+        if v in self.VMs.values():
             raise Exception('VM ' + str(v.ID) + ' is already in the system.')
         if m not in self.machines:
             raise Exception('Not a valid machine ID')
 
         if self.machines[m].add_vm(v):
             ip = self._get_rand_ip()  # get an IP
-            self.vm_by_ip[ip] = v  # index VM by IP
-            self.VMs[v.ID] = v  # index VM by ID
+            self.VMs[ip] = v  # index VM by IP
             v.machine = m
             v.ip = ip
 
             counter = 0
             # add a link for each one of this VM's connections in the system
             for target in v.transfers:
-                if target in self.vms_by_ip.values():
+                if target in self.VMs.values():
                     self._add_link(v, target)
                     v.activate_transfer(target, ip)
                     counter += 1
 
             # check to see if other VMs in the system link to the new one
-            for u in self.vms_by_ip.values():
+            for u in self.VMs.values():
                 if v in u.transfers.iterkeys():
                     self._add_link(u, v)
                     u.activate_transfer(v, ip)
@@ -109,7 +106,7 @@ class DataCenter(object):
 
     # Remove VM with ip from the network
     def remove(self, ip):
-        v = self.vms_by_ip[ip]
+        v = self.VMs[ip]
         self.machines[v.machine].remove_vm(v)
 
         # Remove all the active outgoing links from this VM
@@ -125,15 +122,13 @@ class DataCenter(object):
             self._remove_link(u, v)
 
         v.machine = None
-
-        del self.VMs[v.ID]
-        del self.vm_by_ip[v.ip]
+        del self.VMs[v.ip]
 
     # Return the number of bytes left to transfer between u and v
     # TODO: find out what this actually means
     def progress(self, u, v):
         self._update()
-        return u.to_transfer(v.ID) + v.to_transfer(u.ID)
+        return u.to_transfer(v) + v.to_transfer(u)
 
     # Get the total amount of time a user has clocked
     def user_time(self, usr):
@@ -169,6 +164,7 @@ class DataCenter(object):
                     '; '.join(str(l) + ': ' + 
                     bcolors.YELLOW + str(len(num)) + bcolors.ENDC 
                     for l, num in self.core_links.items())
+
         print bcolors.GREEN + ' * aggregate links:\n   ' + bcolors.ENDC +\
             '\n   '.join(
                     '; '.join(str(l[0]) + '<->' + str(l[1]) + ': ' + 
@@ -199,7 +195,7 @@ class DataCenter(object):
         rand_ip = lambda: '.'.join([str(random.randrange(256)) 
                                     for i in range(4)])
         ip = rand_ip()
-        while ip in self.vm_by_ip:  # try until we find one we haven't used
+        while ip in self.VMs:  # try until we find one we haven't used
             ip = rand_ip()
         return ip
     
@@ -277,11 +273,10 @@ class DataCenter(object):
         delta_t = now - self.time
         mttc = float('inf')  # min time to completion
         
-        vms = self.vms_by_ip.values()
+        vms = self.VMs.values()
         for u in vms:
-            for vid in u.active_transfers.iterkeys():
-                amt = u.transfers[vid]
-                v = self.VMs[vid]
+            for v in u.active_transfers.iterkeys():
+                amt = u.transfers[v]
                 tp = self._get_link_speed(
                         self._get_group(u), self._get_group(v))
                 mttc = min(mttc, amt / tp)
@@ -310,10 +305,9 @@ class DataCenter(object):
         for u in vms:
             self.users[u.user] += delta
 
-            for vid in u.active_transfers.keys():
-                v = self.VMs[vid]
+            for v in u.active_transfers.keys():
                 tp = self._get_link_speed(
                         self._get_group(u), self._get_group(v))
 
-                if u.transfer(vid, tp * delta):
+                if u.transfer(v.ip, tp * delta):
                     self._remove_link(u, v)
