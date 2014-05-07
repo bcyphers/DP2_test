@@ -15,9 +15,9 @@ class bcolors:
     ENDC = '\033[0m'
 
 class DataCenter(object):
-    NUM_MACHINES = 1152
-    GROUP_SIZE = 48
+    GROUP_SIZE = 12
     NUM_GROUPS = 24
+    NUM_MACHINES = GROUP_SIZE * NUM_GROUPS
     AGG_ROUTERS = 4
     THROUGHPUT = 10000.0  # in MBPS
 
@@ -54,6 +54,8 @@ class DataCenter(object):
     # Place VM v on machine m, or return False if it is full
     def place(self, v, m):
         self._update()
+        if v.ID in self.VMs:
+            raise Exception('VM ' + str(v.ID) + ' is already in the system.')
         if m not in self.machines:
             raise Exception('Not a valid machine ID')
 
@@ -66,17 +68,17 @@ class DataCenter(object):
 
             counter = 0
             # add a link for each one of this VM's connections in the system
-            for target in v.transfers.iterkeys():
-                if target in self.VMs:
-                    self._add_link(v, self.VMs[target])
+            for target in v.transfers:
+                if target in self.vms_by_ip.values():
+                    self._add_link(v, target)
                     v.activate_transfer(target, ip)
                     counter += 1
 
             # check to see if other VMs in the system link to the new one
-            for u in self.VMs.values():
-                if v.ID in u.transfers.iterkeys():
+            for u in self.vms_by_ip.values():
+                if v in u.transfers.iterkeys():
                     self._add_link(u, v)
-                    u.activate_transfer(v.ID, ip)
+                    u.activate_transfer(v, ip)
                     counter += 1
 
             if VERBOSE:
@@ -105,9 +107,9 @@ class DataCenter(object):
             print 'Placing VM at random machine, id =', m
         return m, self.place(v, m)
 
-    # Remove VM v from the network
-    def remove(self, vid):
-        v = self.VMs[vid]
+    # Remove VM with ip from the network
+    def remove(self, ip):
+        v = self.vms_by_ip[ip]
         self.machines[v.machine].remove_vm(v)
 
         # Remove all the active outgoing links from this VM
@@ -122,7 +124,9 @@ class DataCenter(object):
         for u in incoming_transfers:
             self._remove_link(u, v)
 
-        del self.VMs[vid]
+        v.machine = None
+
+        del self.VMs[v.ID]
         del self.vm_by_ip[v.ip]
 
     # Return the number of bytes left to transfer between u and v
@@ -136,7 +140,7 @@ class DataCenter(object):
         self._update()
         return self.users[usr]
 
-    # Return the number of VMs on machine m
+    # Return the number of slots open on machine m
     def machine_occupancy(self, m):
         self._update()
         return self.machines[m].occupancy()
@@ -187,7 +191,7 @@ class DataCenter(object):
         print '   ' + '\n   '.join(
                 'ID ' + str(usr) + ': ' +
                 bcolors.YELLOW + str(value) + bcolors.ENDC
-                for usr, value in self.users.items())
+                for usr, value in self.users.items() if usr >= 0)
 
     # Get a random, unused ip for a VM
     def _get_rand_ip(self):
@@ -273,7 +277,7 @@ class DataCenter(object):
         delta_t = now - self.time
         mttc = float('inf')  # min time to completion
         
-        vms = self.VMs.values()
+        vms = self.vms_by_ip.values()
         for u in vms:
             for vid in u.active_transfers.iterkeys():
                 amt = u.transfers[vid]

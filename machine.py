@@ -1,52 +1,59 @@
 class VirtualMachine(object):
     # Initialize the VM. B should be a tuple of n tuples of length n, 
     # with B[i][j] referencing the j^th column of the i^th row.
-    def __init__(self, user, ID, B):
+    def __init__(self, user, ID):
         self.machine = None
         self.ip = None
         self.user = user
         self.ID = ID
 
+    def activate(self, B):
         # self.transfers keeps track of all the data which still has to
         # be transferred TO any given VM in the system.
-        self.transfers = {i: B[ID][i] for i in B if i != ID and B[ID][i] > 0}
+        self.transfers = {vm: B[self][vm] for vm in B 
+                if vm != self and B[self][vm] > 0}
 
-        # active_transfers has the ip addressed for all currently running 
-        # transfers indexed by VMID
+        # active_transfers has the vm for all currently running 
+        # transfers indexed by IP
         self.active_transfers = {}
 
     # Transfer data from self to another VM
     # return True if the transfer terminated, False otherwise
     # If no value for amount is supplied, transfer all data
-    def transfer(self, vmid, amt=None):
+    def transfer(self, ip, amt=None):
         if amt == None:
-            del self.transfers[vmid]
-            del self.active_transfers[vmid]
+            vm = self.active_transfers[ip]
+            del self.active_transfers[ip]
+            del self.transfers[vm]
             # print 'VM', self.ID,'- connection to', vmid, 'finished!'
-            self.on_transfer_complete(self, vmid)
+            self.on_transfer_complete(self, vm)
             return True
         else:
             self.transfers[vmid] -= amt
             if self.transfers[vmid] < -100:
                 raise Exception('Tried to transfer too much data from' +
                         ' VM ' + str(self.ID) + ' to VM ' + str(vmid) + 
-                        '. New amount = ' + str(self.transfers[vmid]))
+                        '. New amount = ' + str(self.transfers[vm]))
             if self.transfers[vmid] < 10 ** -5:
-                del self.transfers[vmid]
-                del self.active_transfers[vmid]
+                vm = self.active_transfers[ip]
+                del self.active_transfers[ip]
+                del self.transfers[vm]
                 # print 'VM', self.ID,'- connection to', vmid, 'finished!'
-                self.on_transfer_complete(self, vmid)
+                self.on_transfer_complete(self, vm)
                 return True
 
         return False
 
-    # How much data is left to transfer to vmid?
-    def to_transfer(self, vmid):
-        return self.transfers[vmid]
+    # How much data is left to transfer to vm?
+    def to_transfer(self, vm):
+        try:
+            return self.transfers[vm]
+        except:
+            return 0
 
     # Begin transferring data to another VM
-    def activate_transfer(self, vmid, ip):
-        self.active_transfers[vmid] = ip
+    def activate_transfer(self, vm, ip):
+        self.active_transfers[ip] = vm
 
     # Callback for whenever a VM transfer completes - should be overridden
     # kinda janky in that you have to pass 'self' as an argument every time
@@ -55,13 +62,14 @@ class VirtualMachine(object):
         pass
 
 class Machine(object):
+    NUM_VMs = 4
     def __init__(self, ID, VMs=None):
         self.ID = ID
         self.VMs = VMs or []
 
     # Add a VM to the machine and return it, or return False
     def add_vm(self, VM):
-        if len(self.VMs) < 4:
+        if len(self.VMs) < self.NUM_VMs:
             self.VMs.append(VM)
             return VM
         else:
@@ -77,4 +85,4 @@ class Machine(object):
 
     # How many open slots does this machine have?
     def occupancy(self):
-        return 4 - len(self.VMs)
+        return self.NUM_VMs - len(self.VMs)
