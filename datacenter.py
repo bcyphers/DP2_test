@@ -31,7 +31,7 @@ class DataCenter(object):
             for i in xrange(self.NUM_GROUPS)}
 
         # users keeps track of how much total time each user's VMs have used
-        self.users = defaultdict(float)
+        self.users = defaultdict(lambda: [0, 0, 0])
 
         # Links are represented as tuples: (lower level, upper level)
         # each link points to a list of the connections it currently serves.
@@ -68,14 +68,14 @@ class DataCenter(object):
             for target in v.transfers:
                 if target in self.VMs.values():
                     self._add_link(v, target)
-                    v.activate_transfer(target, ip)
+                    v.activate_transfer(target, target.ip)
                     counter += 1
 
             # check to see if other VMs in the system link to the new one
             for u in self.VMs.values():
                 if v in u.transfers.iterkeys():
                     self._add_link(u, v)
-                    u.activate_transfer(v, ip)
+                    u.activate_transfer(v, v.ip)
                     counter += 1
 
             if VERBOSE:
@@ -107,22 +107,21 @@ class DataCenter(object):
     # Remove VM with ip from the network
     def remove(self, ip):
         v = self.VMs[ip]
-        self.machines[v.machine].remove_vm(v)
 
         # Remove all the active outgoing links from this VM
-        for uid in v.transfers:
-            self._remove_link(v, self.VMs[uid])
+        for u in v.transfers:
+            self._remove_link(v, u)
 
         # Find all incoming links and remove those, too
-        it = [[i for i in u.transfers if i == v.ID] 
+        it = [[i for i in u.transfers if i is v] 
                 for u in self.VMs.values()]
         incoming_transfers = list(itertools.chain.from_iterable(it))
 
         for u in incoming_transfers:
             self._remove_link(u, v)
 
-        v.machine = None
         del self.VMs[v.ip]
+        self.machines[v.machine].remove_vm(v)
 
     # Return the number of bytes left to transfer between u and v
     # TODO: find out what this actually means
@@ -133,7 +132,7 @@ class DataCenter(object):
     # Get the total amount of time a user has clocked
     def user_time(self, usr):
         self._update()
-        return self.users[usr]
+        return self.users[usr][0]
 
     # Return the number of slots open on machine m
     def machine_occupancy(self, m):
@@ -181,13 +180,28 @@ class DataCenter(object):
                     bcolors.ENDC
                     for g in self.groups if int(g/6) == i) 
                 for i in range(self.AGG_ROUTERS))
-        
-        # print the total amount of time each user has used
-        print bcolors.HEADER + '\nTOTAL TIME BY USER:' + bcolors.ENDC
+
+        # calculate some user stats
+        for u in self.users:
+            vms = [v for v in self.VMs.values() if v.user == u]
+            try:
+                pct = int(sum(v.total_data - sum(v.transfers.values())
+                    for v in vms) / sum(v.total_data for v in vms) * 100)
+            finally:
+                pct = 100
+
+            self.users[u][1] = len(vms)
+            self.users[u][2] = pct
+
+        # print some stats for each user
+        print bcolors.HEADER + '\nUSER: TIME, VMs, % COMPLETION:' +
+                bcolors.ENDC
         print '   ' + '\n   '.join(
-                'ID ' + str(usr) + ': ' +
-                bcolors.YELLOW + str(value) + bcolors.ENDC
-                for usr, value in self.users.items() if usr >= 0)
+                'ID ' + str(usr) + ': ' + 
+                bcolors.YELLOW + 
+                str(val[0]) + ', ' + str(val[1]) + ', ' + str(val[2]) + '%' +
+                bcolors.ENDC 
+                for usr, val in self.users.items() if usr >= 0)
 
     # Get a random, unused ip for a VM
     def _get_rand_ip(self):
@@ -216,13 +230,13 @@ class DataCenter(object):
         ag2 = int(g2 / 6)
 
         # Add the vm connection to the (group -> aggregate group) links
-        self.agg_links[(g1, ag1)].add((vm1.ID, vm2.ID)) 
-        self.agg_links[(g2, ag2)].add((vm1.ID, vm2.ID)) 
+        self.agg_links[(g1, ag1)].add((vm1.ip, vm2.ip)) 
+        self.agg_links[(g2, ag2)].add((vm1.ip, vm2.ip)) 
 
         # Add the connection to the (aggregate -> core) links
         if ag1 != ag2:
-            self.core_links[ag1].add((vm1.ID, vm2.ID))
-            self.core_links[ag2].add((vm1.ID, vm2.ID))
+            self.core_links[ag1].add((vm1.ip, vm2.ip))
+            self.core_links[ag2].add((vm1.ip, vm2.ip))
 
     # Delete a link between two machines
     def _remove_link(self, vm1, vm2):
@@ -237,13 +251,13 @@ class DataCenter(object):
         ag2 = int(g2 / 6)
 
         # remove the connection from the (group -> aggregate group) links
-        self.agg_links[(g1, ag1)].remove((vm1.ID, vm2.ID)) 
-        self.agg_links[(g2, ag2)].remove((vm1.ID, vm2.ID)) 
+        self.agg_links[(g1, ag1)].remove((vm1.ip, vm2.ip)) 
+        self.agg_links[(g2, ag2)].remove((vm1.ip, vm2.ip)) 
 
         # remove the connection from the (aggregate -> core) links
         if ag1 != ag2:
-            self.core_links[ag1].remove((vm1.ID, vm2.ID))
-            self.core_links[ag2].remove((vm1.ID, vm2.ID))
+            self.core_links[ag1].remove((vm1.ip, vm2.ip))
+            self.core_links[ag2].remove((vm1.ip, vm2.ip))
 
     # What is the throughput (in MBPS) between two groups?
     # This assumes that all connections are given equal speeds
@@ -275,7 +289,7 @@ class DataCenter(object):
         
         vms = self.VMs.values()
         for u in vms:
-            for v in u.active_transfers.iterkeys():
+            for v in u.active_transfers.values():
                 amt = u.transfers[v]
                 tp = self._get_link_speed(
                         self._get_group(u), self._get_group(v))
@@ -303,9 +317,9 @@ class DataCenter(object):
     def _roll_forward(self, delta):
         vms = self.VMs.values()
         for u in vms:
-            self.users[u.user] += delta
+            self.users[u.user][0] += delta
 
-            for v in u.active_transfers.keys():
+            for v in u.active_transfers.values():
                 tp = self._get_link_speed(
                         self._get_group(u), self._get_group(v))
 

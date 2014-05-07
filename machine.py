@@ -17,28 +17,27 @@ class VirtualMachine(object):
         # transfers indexed by IP
         self.active_transfers = {}
 
+        self.total_data = sum(self.transfers.values())
+
     # Transfer data from self to another VM
     # return True if the transfer terminated, False otherwise
     # If no value for amount is supplied, transfer all data
     def transfer(self, ip, amt=None):
+        vm = self.active_transfers[ip]
         if amt == None:
-            vm = self.active_transfers[ip]
             del self.active_transfers[ip]
             del self.transfers[vm]
-            # print 'VM', self.ID,'- connection to', vmid, 'finished!'
             self.on_transfer_complete(self, vm)
             return True
         else:
-            self.transfers[vmid] -= amt
-            if self.transfers[vmid] < -100:
+            self.transfers[vm] -= amt
+            if self.transfers[vm] < -100:
                 raise Exception('Tried to transfer too much data from' +
                         ' VM ' + str(self.ID) + ' to VM ' + str(vmid) + 
                         '. New amount = ' + str(self.transfers[vm]))
-            if self.transfers[vmid] < 10 ** -5:
-                vm = self.active_transfers[ip]
+            if self.transfers[vm] < 10 ** -5:
                 del self.active_transfers[ip]
                 del self.transfers[vm]
-                # print 'VM', self.ID,'- connection to', vmid, 'finished!'
                 self.on_transfer_complete(self, vm)
                 return True
 

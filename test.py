@@ -5,24 +5,25 @@ from datacenter import DataCenter
 
 # generate B as a dict of dicts, n x n, with random amounts of data up to 
 # max_data megabytes to transfer. vmids is a list of ID numbers, not an int
-def random_B(vmids, max_data):
-    return {i: {j: random.randrange(max_data) 
-                    if i != j else 0 for j in vmids} 
-              for i in vmids}
+# B is guaranteed to be a full matrix, although it may contain zeroes.
+def random_B(vms, max_data):
+    return {u: {v: random.randrange(max_data) 
+                    if u is not v else 0 for v in vms} 
+              for u in vms}
 
 # generate a B matrix with at most max_conn connections from any given VM. 
-def sparse_B(vmids, max_data, max_conn):
+def sparse_B(vms, max_data, max_conn):
     B = {}
-    for i in vmids:
+    for u in vms:
         # Randomly choose max_conn VMs from the set to connect to
-        out_connections = random.sample(vmids, max_conn)
-        B[i] = {}
+        out_connections = random.sample(vms, max_conn)
+        B[u] = {}
 
-        for j in vmids:
-            if i != j and i in out_connections:
-                B[i][j] = random.randrange(max_data) 
+        for v in vms:
+            if u is not v and u in out_connections:
+                B[u][v] = random.randrange(max_data) 
             else:
-                B[i][j] = 0
+                B[u][v] = 0
 
     return B
 
@@ -30,14 +31,13 @@ def sparse_B(vmids, max_data, max_conn):
 def fill_datacenter(dc, num_usr, num_vm, max_data):
     # the user IDs should iterate over {-1, -2, ..., -num_usr + 1}
     for usr in range(-1, -num_usr, -1):
-        # The VM ids should start at -1 and end at -(num_usr * num_vm)
-        start = (usr + 1) * num_vm - 1
-        stop = usr * num_vm - 1
-        vmids = range(start, stop, -1) 
-        B = random_B(vmids, max_data)
+        # Initialize VMs
+        vms = [VirtualMachine(usr, -1) for i in range(num_vm)]
+        B = random_B(vms, max_data)
 
-        for i in vmids:
-            vm = VirtualMachine(usr, i, B)
+        # activate them and add to the network
+        for vm in vms:
+            vm.activate(B)
             vm.on_transfer_complete = lambda v1, v2: None
             dc.random_place(vm)
 
@@ -55,26 +55,24 @@ def dumb_test():
 
     # the callback for when a VM completes its job - remove it if it has no more
     # data to send or receive.
-    def on_complete(vm1, vm2id):
-        # since a job involves 2 VMs, check the receiving VM for completion too
-        vm2 = next((v for v in vms if v.ID == vm2id), None)
-
+    def on_complete(vm1, vm2):
         for vm in (vm1, vm2):
             # if all of this VM's outgoing transfers are done, see if we can
             # remove it for good
             if len(vm.transfers) == 0:
                 # find all this VM's incoming transfers
-                it = [[i for i in u.transfers if i == vm.ID] for u in vms]
-                incoming_transfers = list(itertools.chain.from_iterable(it))
-
-                # if there are none left, remove the VM
-                if len(incoming_transfers) == 0:
-                    dc.remove(vm.ID)
+                for v in vms:
+                    if vm in v.transfers:
+                        break
+                else:
+                    # if there are none left, remove the VM
+                    dc.remove(vm.ip)
                     print 'Removing VM with ID', vm.ID
 
     # start by placing all the VMs randomly around the network
     for i in range(n):
-        vm = VirtualMachine(usr, i, B)
+        vm = VirtualMachine(usr, i)
+        vm.activate(B)
         vm.on_transfer_complete = on_complete  # set callback
         vms.append(vm)  # cache the VM here
         dc.random_place(vm)  # place!
@@ -94,23 +92,19 @@ def greedy_place():
 
     # the callback for when a VM completes its job - remove it if it has no more
     # data to send or receive.
-    def on_complete(vm1, vm2id):
+    def on_complete(vm1, vm2):
         usr = vm1.user
-        # since a job involves 2 VMs, check the receiving VM for completion too
-        vm2 = next((v for v in vms[usr] if v.ID == vm2id), None)
-
         for vm in (vm1, vm2):
             # if all of this VM's outgoing transfers are done, see if we can
             # remove it for good
             if len(vm.transfers) == 0:
                 # find all this VM's incoming transfers
-                it = [[i for i in u.transfers if i == vm.ID] for u in vms[usr]]
-                incoming_transfers = list(itertools.chain.from_iterable(it))
-
-                # if there are none left, remove the VM
-                if len(incoming_transfers) == 0:
-                    dc.remove(vm.ID)
-                    print 'Removing VM with ID', vm.ID
+                for v in vms[usr]:
+                    if vm in v.transfers:
+                        break
+                else:
+                    # if there are none left, remove the VM
+                    dc.remove(vm.ip)
         
     # first, place random users around the network with very large connections
     fill_datacenter(dc, 20, 10, 10**7)
@@ -120,20 +114,23 @@ def greedy_place():
 
     # next, place all of our users' VMs around the network greedily
     for u in usrs:
-        B = sparse_B(range(u*n, (u+1) * n), 400000, 5)
-        print B
-        for i in range(n):
-            vm = VirtualMachine(u, u * n + i, B)
+        vms[u] = [VirtualMachine(u, i) for i in range(n)]
+        B = sparse_B(vms[u], 400000, 5)
+
+        for vm in vms[u]:
+            vm.activate(B)
             vm.on_transfer_complete = on_complete  # set callback
-            vms[u].append(vm)  # cache the VM here
         
         # sort the VMs by total data to transfer
-        sorted_vms = sorted(vms[u], key=lambda v: sum(v.transfers.values()))
+        sorted_vms = sorted(vms[u], key=lambda v: -sum(v.transfers.values()))
+
+        # try all machines in order
         m = 0
         for v in sorted_vms:
             # try to place in the first available spot
             while not dc.place(v, m):
                 m = (m + 1) % dc.NUM_MACHINES            
+
         dc.draw_status()
 
     # keep updating until everything's finished
@@ -146,7 +143,7 @@ def greedy_place():
         finished = True
         for u in usrs:
             for vm in vms[u]:
-                if vm.ID in dc.VMs:
+                if vm.ip in dc.VMs:
                     finished = False
                     break
 

@@ -2,70 +2,10 @@ import random, time, itertools, threading
 from collections import defaultdict
 from machine import Machine, VirtualMachine
 from datacenter import DataCenter
+from server import Server
 from test import *
 
-dc = DataCenter()
-usrs = range(1)  # Just one user to start
-n = 50
-vms = {u: [] for u in usrs}
-
-
-# the callback for when a VM completes its job - remove it if it has no more
-# data to send or receive.
-def on_complete(vm1, vm2id):
-    usr = vm1.user
-    # since a job involves 2 VMs, check the receiving VM for completion too
-    vm2 = next((v for v in vms[usr] if v.ID == vm2id), None)
-
-    for vm in (vm1, vm2):
-        # if all of this VM's outgoing transfers are done, see if we can
-        # remove it for good
-        if len(vm.transfers) == 0:
-            # find all this VM's incoming transfers
-            it = [[i for i in u.transfers if i == vm.ID] for u in vms[usr]]
-            incoming_transfers = list(itertools.chain.from_iterable(it))
-
-            # if there are none left, remove the VM
-            if len(incoming_transfers) == 0:
-                dc.remove(vm.ID)
-                print 'Removing VM with ID', vm.ID
-    
-
-# This calculates which (if any) group the VM should jump to
-def calc_delta_data(vm):
-    while vm.transfers:
-        score_by_group = defaultdict(int)
-        my_group = int(vm.machine / dc.GROUP_SIZE)
-
-        # Loop over all transfers, and sum up the amount to transfer in
-        # each group
-        for vid in vm.transfers:
-            other_vm = vms[vm.user][v]
-            group = int(other_vm.machine / dc.GROUP_SIZE)
-            score_by_group[group] += (vm.transfers[vid] + \
-                                     other_vm.transfers[vm.ID])
-
-        # Subtract the amount we will lose by leaving the current group
-        for g in score_by_group:
-            score_by_group[g] -= score_by_group[my_group]
-
-        # Find the max
-        vm.max_group_score = max(score_by_group.iteritems(),
-                                 key=lambda i: i[1])
-        
-        # Wait
-        time.sleep(1)
-
-
-# Get the average throughput from any VM to all groups in the system
-def average_throughput(vm):
-    if vm is None:
-        return 0
-    tps = [dc.tcp_throughput(vm, u) for u in vms[vm.user] if u is not vm]
-    return sum(tps) / len(tps)
-
-
-def our_strategy():
+def test():
     # first, place random users around the network with very large connections
     fill_datacenter(dc, 20, 10, 10**7)
     time.sleep(1)  # Wait one second
