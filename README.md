@@ -2,16 +2,16 @@
 This is some code to test our DP2 schemes. datacenter.py has the main code for
 the virtual datacenter, and machine.py has the code for the virtual machine and
 physical machine simulation classes. To try it, run 'python test.py' and watch
-\- it creates a single user with 20 randomly-generated VMs and adds them
-randomly to the network, then runs to completion.  Eventually we can add our
-solution logic to that and compare results.
+\- it fills the data center with 200 randomly-generated VMs, then adds 10 users
+with 20 VMs each to the network and lets them run to completion. Our solution
+is a WIP in the real\_test and server.py files.
 
 ### Outline of datacenter properties:
- - machines has 1152 Machine objects indexed by ID 
+ - machines has 288 Machine objects indexed by ID - 1/4th the actual number. 
  - VMs stores all VirtualMachine objects which have been added to the data
-   center indexed by ID as well
- - users stores the amount of time each user of the system has racked up,
-   indexed by an integer user ID
+   center indexed by ip address
+ - users stores some statistics about user time and completion, indexed by an 
+   integer user ID
  - agg\_links stores all the links from group routers to aggregate routers.
    This is a dictionary, indexed by tuples of (group\_id, aggregate\_id) which
 represent links, and pointing to lists of (VM1, VM2) connections active on the
@@ -45,18 +45,16 @@ transfers (delta time * throughput) worth of data on each connection.
 expressions, please ignore.
 
 ### Some things that will/should change:
- - The data center should not need to know the VMs' ids in order to work; it
-   should all happen through ip communication. I think adding a function like
-connect\_to\_ip() to DataCenter, and having VMs handle their own communication,
-might be better. In other words, the connections in the data center should be
-between IPs, not VM IDs.
+ - All the test code is in test.py and real\_test.py in methods. I'm migrating
+   these over to a Server object so that we can just call server.run()
  - There is a bug where sometimes the \_roll\_forward will cause a VM to
    transfer more data than it actually has left. Right now I have it throw an
 exception if it overflows by more than 100 MB, which rarely happens, but we
 should fix this at some point.
  - The links treat pairs of redundant routers as a single router. This provides
 an OK approximation of how the data center should work, but it isn't exact. This
-should be fixed at some point.
+should be fixed at some point. (on second thought, lots of things aren't exact
+-- I think this is pretty ok for approximating)
 
 ### And remember:
 - "Losers visualize the penalties of failure. Winners visualize the rewards of
