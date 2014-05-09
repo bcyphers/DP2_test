@@ -1,4 +1,4 @@
-import sys, math, random, time, itertools
+import sys, math, random, time, itertools, threading
 from machine import Machine, VirtualMachine
 from collections import defaultdict
 
@@ -47,8 +47,18 @@ class DataCenter(object):
         self.time = time.time()
         self.start_time = self.time
 
+        self.lock = threading.Lock()
+        self.running = True
+
         print 'Data center initialized.'
     
+    # Pause and play functions
+    def pause(self):
+        self.running = False
+
+    def unpause(self):
+        self.running = True
+
     # Place VM v on machine m, or return False if it is full
     def place(self, v, m):
         self._update()
@@ -62,20 +72,19 @@ class DataCenter(object):
             self.VMs[ip] = v  # index VM by IP
             v.machine = m
             v.ip = ip
+            v.in_network = True
 
             counter = 0
             # add a link for each one of this VM's connections in the system
             for target in v.transfers:
                 if target in self.VMs.values():
                     self._add_link(v, target)
-                    v.activate_transfer(target, target.ip)
                     counter += 1
 
             # check to see if other VMs in the system link to the new one
             for u in self.VMs.values():
                 if v in u.transfers.iterkeys():
                     self._add_link(u, v)
-                    u.activate_transfer(v, v.ip)
                     counter += 1
 
             if VERBOSE:
@@ -107,17 +116,16 @@ class DataCenter(object):
     # Remove VM with ip from the network
     def remove(self, ip):
         v = self.VMs[ip]
+        v.in_network = False
 
         # Remove all the active outgoing links from this VM
-        for u in v.transfers:
+        for u in v.active_transfers.values():
             self._remove_link(v, u)
 
         # Find all incoming links and remove those, too
-        it = [[i for i in u.transfers if i is v] 
-                for u in self.VMs.values()]
-        incoming_transfers = list(itertools.chain.from_iterable(it))
+        it = [u for u in self.VMs.values() if v in u.active_transfers.values()]
 
-        for u in incoming_transfers:
+        for u in it:
             self._remove_link(u, v)
 
         del self.VMs[v.ip]
@@ -187,19 +195,22 @@ class DataCenter(object):
             try:
                 pct = int(sum(v.total_data - sum(v.transfers.values())
                     for v in vms) / sum(v.total_data for v in vms) * 100)
-            finally:
+            except:
                 pct = 100
+            
+            done = sum(v.total_data - sum(v.transfers.values()) for v in vms)
+            total = sum(v.total_data for v in vms)
 
-            self.users[u][1] = len(vms)
-            self.users[u][2] = pct
+            self.users[u][1] = str(len(vms))
+            self.users[u][2] = str(int(done)) + '/' + str(total) + ' MB = ' + str(pct) + '%'
 
         # print some stats for each user
-        print bcolors.HEADER + '\nUSER: TIME, VMs, % COMPLETION:' +
+        print bcolors.HEADER + '\nUSER: TIME, VMs, % COMPLETION:' +\
                 bcolors.ENDC
         print '   ' + '\n   '.join(
                 'ID ' + str(usr) + ': ' + 
                 bcolors.YELLOW + 
-                str(val[0]) + ', ' + str(val[1]) + ', ' + str(val[2]) + '%' +
+                str(val[0]) + ', ' + val[1] + ', ' + val[2] +
                 bcolors.ENDC 
                 for usr, val in self.users.items() if usr >= 0)
 
@@ -223,6 +234,9 @@ class DataCenter(object):
         m2 = vm2.machine
         g1 = self._get_group(vm1)
         g2 = self._get_group(vm2)
+
+        vm1.activate_transfer(vm2, vm2.ip)
+
         if g1 == g2:  # Don't add anything if they're in the same group
             return
 
@@ -244,6 +258,9 @@ class DataCenter(object):
         m2 = vm2.machine
         g1 = self._get_group(vm1)
         g2 = self._get_group(vm2)
+
+        vm1.deactivate_transfer(vm2.ip)
+
         if g1 == g2:
             return
 
@@ -283,12 +300,17 @@ class DataCenter(object):
 
     # Update the state of the data center
     def _update(self):
+        if not self.running:
+            return
+
         now = time.time()
         delta_t = now - self.time
         mttc = float('inf')  # min time to completion
         
         vms = self.VMs.values()
         for u in vms:
+            if not u.in_network:
+                self.remove(u.ip)
             for v in u.active_transfers.values():
                 amt = u.transfers[v]
                 tp = self._get_link_speed(
@@ -324,4 +346,5 @@ class DataCenter(object):
                         self._get_group(u), self._get_group(v))
 
                 if u.transfer(v.ip, tp * delta):
-                    self._remove_link(u, v)
+                    if u.in_network:
+                        self._remove_link(u, v)

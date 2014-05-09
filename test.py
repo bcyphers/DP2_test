@@ -20,7 +20,7 @@ def sparse_B(vms, max_data, max_conn):
         B[u] = {}
 
         for v in vms:
-            if u is not v and u in out_connections:
+            if v is not u and v in out_connections:
                 B[u][v] = random.randrange(max_data) 
             else:
                 B[u][v] = 0
@@ -41,112 +41,54 @@ def fill_datacenter(dc, num_usr, num_vm, max_data):
             vm.on_transfer_complete = lambda v1, v2: None
             dc.random_place(vm)
 
-# This is some filler test code. It creates 20 VMs with a random B matrix,
-# and randomly places them in the data center one-by-one, with a half second
-# delay in between. No logic at all, just tests the system.
-def dumb_test():
-    dc = DataCenter()
-    usr = 0  # this test just uses one user, but we could add more
-    vms = []  # hold our VMs for easy access
-    n = 20
+# A class representing the remote API server, which handles placement logic
+class Server(object):
 
-    # a random matrix with 20 VMs, exchanging 10 GB max
-    B = random_B(range(n), 10000)  
+    def __init__(self, user, n, dc=None, max_data=10000):
+        self.dc = dc or DataCenter()
+        self.n = n
+        self.user = user
+        self.vms = []
+        self.max_data = max_data
 
-    # the callback for when a VM completes its job - remove it if it has no more
-    # data to send or receive.
-    def on_complete(vm1, vm2):
+    # Initialize VMs, and start placing them around the network.
+    # When finished, transition to loop.
+    def start(self):
+        # a random matrix with 20 VMs, exchanging 10 GB max
+        self.vms = [VirtualMachine(self.user, i) for i in range(self.n)]
+        self.B = random_B(self.vms, self.max_data)  
+
+        # start by placing all the VMs randomly around the network
+        for vm in self.vms:
+            vm.activate(self.B)
+            vm.on_transfer_complete = self.on_complete  # set callback
+            self.dc.random_place(vm)  # place!
+            self.dc.draw_status()
+            time.sleep(0.5)  # aand wait
+
+    def loop(self):
+        # keep updating until everything's finished
+        while self.dc.VMs:
+            self.dc.draw_status()
+            time.sleep(1)
+
+    # the callback for when a VM completes its job - remove it if it has no
+    # more data to send or receive.
+    def on_complete(self, vm1, vm2):
         for vm in (vm1, vm2):
             # if all of this VM's outgoing transfers are done, see if we can
             # remove it for good
             if len(vm.transfers) == 0:
                 # find all this VM's incoming transfers
-                for v in vms:
+                for v in self.vms:
                     if vm in v.transfers:
                         break
                 else:
                     # if there are none left, remove the VM
-                    dc.remove(vm.ip)
-                    print 'Removing VM with ID', vm.ID
-
-    # start by placing all the VMs randomly around the network
-    for i in range(n):
-        vm = VirtualMachine(usr, i)
-        vm.activate(B)
-        vm.on_transfer_complete = on_complete  # set callback
-        vms.append(vm)  # cache the VM here
-        dc.random_place(vm)  # place!
-        dc.draw_status()
-        time.sleep(0.5)  # aand wait
-
-    # keep updating until everything's finished
-    while dc.VMs:
-        dc.draw_status()
-        time.sleep(1)
-
-def greedy_place():
-    dc = DataCenter()
-    usrs = range(10)
-    n = 20
-    vms = {u: [] for u in usrs}
-
-    # the callback for when a VM completes its job - remove it if it has no more
-    # data to send or receive.
-    def on_complete(vm1, vm2):
-        usr = vm1.user
-        for vm in (vm1, vm2):
-            # if all of this VM's outgoing transfers are done, see if we can
-            # remove it for good
-            if len(vm.transfers) == 0:
-                # find all this VM's incoming transfers
-                for v in vms[usr]:
-                    if vm in v.transfers:
-                        break
-                else:
-                    # if there are none left, remove the VM
-                    dc.remove(vm.ip)
+                    vm.in_network = False 
+                    self.vms.remove(vm)
         
-    # first, place random users around the network with very large connections
-    fill_datacenter(dc, 20, 10, 10**7)
-    time.sleep(1)  # Wait one second
-    
-    dc.draw_status()
-
-    # next, place all of our users' VMs around the network greedily
-    for u in usrs:
-        vms[u] = [VirtualMachine(u, i) for i in range(n)]
-        B = sparse_B(vms[u], 400000, 5)
-
-        for vm in vms[u]:
-            vm.activate(B)
-            vm.on_transfer_complete = on_complete  # set callback
-        
-        # sort the VMs by total data to transfer
-        sorted_vms = sorted(vms[u], key=lambda v: -sum(v.transfers.values()))
-
-        # try all machines in order
-        m = 0
-        for v in sorted_vms:
-            # try to place in the first available spot
-            while not dc.place(v, m):
-                m = (m + 1) % dc.NUM_MACHINES            
-
-        dc.draw_status()
-
-    # keep updating until everything's finished
-    finished = False
-    while not finished:
-        dc.draw_status()
-        time.sleep(1)
-
-        # We are finished when all of our users' VMs are done
-        finished = True
-        for u in usrs:
-            for vm in vms[u]:
-                if vm.ip in dc.VMs:
-                    finished = False
-                    break
-
-
 if __name__ == '__main__':
-    greedy_place()
+    server = Server(0, 20)
+    server.start()
+    server.loop()
