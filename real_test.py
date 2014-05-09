@@ -4,10 +4,10 @@ from machine import Machine, VirtualMachine
 from datacenter import DataCenter
 from test import *
 
-class ModifiedVM(VirtualMachine):
+class SmartVM(VirtualMachine):
     
     def __init__(self, user, ID, server):
-        super(ModifiedVM, self).__init__(user, ID)
+        super(SmartVM, self).__init__(user, ID)
         self.server = server
         self._group_scores = {i: 0 for i in range(DataCenter.NUM_GROUPS)}
         self.group_scores = self._group_scores.copy()
@@ -81,7 +81,7 @@ class SmartServer(Server):
 
     # Initialize VMs, and start placing them around the network
     def start(self):
-        self.vms = [ModifiedVM(self.user, i, self) for i in range(self.n)]
+        self.vms = [SmartVM(self.user, i, self) for i in range(self.n)]
         self.B = sparse_B(self.vms, self.max_data, 5)
         self.machines_open = {i: [] for i in range(DataCenter.NUM_GROUPS)}
         self.clusters = defaultdict(Cluster)
@@ -263,11 +263,36 @@ def general_test():
                 s.loop()
         time.sleep(1)
 
+
+# Fill the datacenter with random VMs, assigning them negative ids
+def fill_all(dc, num_usr, num_vm, max_data):
+    # We want to place one VM in every machine, but in random order.
+    machines = range(num_usr * num_vm)
+    random.shuffle(machines)
+
+    # the user IDs should iterate over {-1, -2, ..., -num_usr + 1}
+    for usr in range(-1, -num_usr, -1):
+        # Initialize VMs
+        vms = [VirtualMachine(usr, -1) for i in range(num_vm)]
+        B = random_B(vms, max_data)
+
+        # activate them and add to the network
+        for vm in vms:
+            m = machines.pop()
+            vm.activate(B)
+            vm.on_transfer_complete = lambda v1, v2: None
+            dc.place(vm, m)
+
 # WIP
 def scenario_1():
-    # first, place random users around the network with very large connections
+    Machine.NUM_VMs = 2
     dc = DataCenter()
-    fill_datacenter(dc, 20, 10, 10**7)
+
+    # first, place random users around the network with very large connections
+    dc.pause()
+    fill_even(dc, 32, 9, 10**7)
+    dc.unpause()
+
     dc.draw_status()
     time.sleep(1)  # Wait one second
 
@@ -294,5 +319,6 @@ def scenario_2():
 # WIPE
 def scenario_3():
     pass
+
 if __name__ == '__main__':
     general_test()

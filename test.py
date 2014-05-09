@@ -54,7 +54,7 @@ class Server(object):
     # Initialize VMs, and start placing them around the network.
     # When finished, transition to loop.
     def start(self):
-        # a random matrix with 20 VMs, exchanging 10 GB max
+        # a random matrix with n VMs, exchanging max_data MB max
         self.vms = [VirtualMachine(self.user, i) for i in range(self.n)]
         self.B = random_B(self.vms, self.max_data)  
 
@@ -64,7 +64,6 @@ class Server(object):
             vm.on_transfer_complete = self.on_complete  # set callback
             self.dc.random_place(vm)  # place!
             self.dc.draw_status()
-            time.sleep(0.5)  # aand wait
 
     def loop(self):
         # keep updating until everything's finished
