@@ -4,7 +4,6 @@ from machine import Machine, VirtualMachine
 from datacenter import DataCenter
 from test import *
 
-# NOT DONE!!
 class PairwiseServer(Server):
     # Place all of our users' VMs around the network greedily
     def start(self):
@@ -25,7 +24,7 @@ class PairwiseServer(Server):
             while not self.dc.place(v, m):
                 m = (m + 1) % self.dc.NUM_MACHINES            
 
-        dc.draw_status()
+        self.dc.draw_status()
         self.finished = False
 
     # keep updating until everything's finished
@@ -33,11 +32,40 @@ class PairwiseServer(Server):
         self.dc.user_time(self.user)
 
         # We are finished when all of our users' VMs are done
+        self.finished = True
         for vm in self.vms:
             if vm.ip in dc.VMs:
-                break
+                self.finished = False
+
+        if self.finished or not self.vms:
+            return
+
+        # choose a random pair
+        vm1 = random.choice(self.vms)
+        choices = [v for v in vm1.transfers if v in self.vms]
+        if choices:
+            vm2 = random.choice(choices)
         else:
-            self.finished = True
+            return
+
+        # find machine
+        self.dc.pause()
+        machines = [m for m in range(DataCenter.NUM_MACHINES) 
+                if self.dc.machine_occupancy(m) >= 2]
+        self.dc.unpause()
+
+        m = random.choice(machines)
+
+        # remove from old machines
+        if vm1.ip in self.dc.VMs:
+            self.dc.remove(vm1.ip)
+        if vm2.ip in self.dc.VMs:
+            self.dc.remove(vm2.ip)
+
+        # place
+        self.dc.place(vm1, m)
+        self.dc.place(vm2, m)
+
 
 if __name__ == '__main__':
     # first, place random users around the network with very large connections
@@ -47,7 +75,7 @@ if __name__ == '__main__':
     time.sleep(1)  # Wait one second
 
     # initialize everything
-    servers = [GreedyServer(i, 20, dc=dc, max_data=100000) for i in range(10)]
+    servers = [PairwiseServer(i, 20, dc=dc, max_data=100000) for i in range(10)]
 
     dc.pause()
     for server in servers:

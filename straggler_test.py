@@ -11,8 +11,6 @@ class StragglerServer(Server):
     def start(self):
         # a random matrix with 20 VMs, exchanging 10 GB max
         self.vms = [VirtualMachine(self.user, i) for i in range(self.n)]
-        #print self.vms
-        #print self.n
         self.B = sparse_B(self.vms, self.max_data, 5)
         self.finished = False
 
@@ -29,7 +27,7 @@ class StragglerServer(Server):
             vm.activate(self.B)
             vm.on_transfer_complete = self.on_complete  # set callback
             self.dc.random_place(vm)
-
+        
         self.dc.draw_status()
 
     def loop(self):
@@ -43,34 +41,30 @@ class StragglerServer(Server):
         # Find lowest amount of progress
         min_progress = 150
         min_progress_pair = ()
-        if not self.finished:
-            for i in range(len(self.vms)):
-                for j in range(i+1, len(self.vms)):
-                    #print j
-                    vm1 = self.vms[i]
-                    try:
-                        vm2 = self.vms[j]
-                    except IndexError, e:
-                        continue
-                    progress = self.dc.progress(vm1, vm2)
-                    percent = 0
-                    # for now assumes that VMs making zero progress have finished
-                    if self.starting_progress[(i, j)] != 0:
-                        # Progress = amount of data transferred / amount to transfer overall
-                        percent = int(100 * (self.starting_progress[(i, j)] - progress) / self.starting_progress[(i, j)])
-                    if percent != 0:
-                        min_progress = min(percent, min_progress)
-                        min_progress_pair = (vm1, vm2)
+        for i, vm1 in enumerate(self.vms):
+            the_rest = (e for e in enumerate(self.vms) if e[0] > i)
+            for j, vm2 in the_rest:
+                progress = self.dc.progress(vm1, vm2)
+                percent = 0
 
-            # Get the pair making the least amount of progress and randomly move one of the VMs somewhere else
-            try:
-                vm_to_move = min_progress_pair[random.randint(0, 1)]
-                self.dc.remove(vm_to_move.ip)
-                self.dc.random_place(vm_to_move)
-            except Exception, e: #find out why this is happening
-                pass 
-            #self.dc.draw_status()
-            #time.sleep(1)
+                # for now assumes that VMs making no progress have finished
+                if self.starting_progress[(i, j)] > 0:
+                    # Progress = amount of data transferred / amount to
+                    # transfer overall
+                    percent = int(100 * (self.starting_progress[(i, j)] -
+                        progress) / self.starting_progress[(i, j)])
+                if percent != 0:
+                    min_progress = min(percent, min_progress)
+                    min_progress_pair = (vm1, vm2)
+
+        # Get the pair making the least amount of progress and randomly
+        # move one of the VMs somewhere else
+        try:
+            vm_to_move = min_progress_pair[random.randint(0, 1)]
+            self.dc.remove(vm_to_move.ip)
+            self.dc.random_place(vm_to_move)
+        except Exception, e: #find out why this is happening
+            pass 
 
 def simple_test():
     dc = DataCenter()
@@ -91,17 +85,11 @@ def simple_test():
 def straggler_test():
     # first, place random users around the network with very large connections
     dc = DataCenter()
-    fill_datacenter(dc, 20, 10, 10**4)
->>>>>>> fc085ede86a7d4707bd77f3319ffb003f0d1f250
+    fill_datacenter(dc, 20, 10, 10**7)
     dc.draw_status()
-    time.sleep(1)  # Wait one second
 
     # initialize everything
-<<<<<<< HEAD
-    servers = [GreedyServer(i, 20, dc=dc, max_data=100000) for i in range(10)]
-=======
-    servers = [StragglerServer(i, 10, dc=dc, max_data=10000) for i in range(5)]
->>>>>>> fc085ede86a7d4707bd77f3319ffb003f0d1f250
+    servers = [StragglerServer(i, 20, dc=dc, max_data=10000) for i in range(10)]
 
     dc.pause()
     for server in servers:
@@ -115,10 +103,7 @@ def straggler_test():
             if not s.finished:
                 s.loop()
         time.sleep(1)
-<<<<<<< HEAD
-=======
 
 if __name__ == '__main__':
     #simple_test()
     straggler_test()
->>>>>>> fc085ede86a7d4707bd77f3319ffb003f0d1f250

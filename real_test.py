@@ -75,7 +75,17 @@ class SmartVM(VirtualMachine):
 class Cluster:
     def __init__(self):
         self.vms = []
+        self.group = None
 
+    def merge(self, cluster, server):
+        g = cluster.group
+
+        for vm in this.VMs:
+            server.move(vm, server.machines_open[g][0])
+
+        cluster.VMs.union(this.VMs); 
+        self.VMs = set() 
+        return cluster
 
 class SmartServer(Server):
 
@@ -96,18 +106,20 @@ class SmartServer(Server):
     def greedy_place(self):
         self.gather_data()  # update the open machines dict
         vms_to_place = self.vms[:]  # copy VMs into a new list 
-        # first_vm = max(self.vms, key=lambda v: sum(v.transfers.values()))
-        m = 0
+        
+        group = max(self.machines_open.items(), key=lambda g: len(g[1]))[0]
 
         # try all machines in order
         while vms_to_place:
             v = vms_to_place.pop(0)
-            # find the vm with the most connections to the group
-            # try to place in the best available spot
-            while not self.dc.place(v, m):
-                m = (m + 1) % self.dc.NUM_MACHINES 
+            if self.machines_open[group]:
+                m = self.machines_open[group].pop()
+            else:
+                group = max(self.machines_open.items(),
+                            key=lambda g: len(g[1]))[0]
+
+            self.dc.place(v, m)
             
-            group = int(m / self.dc.GROUP_SIZE)
             self.clusters[group].vms.append(v)
             v.start_loop()
 
@@ -120,6 +132,7 @@ class SmartServer(Server):
         self.gather_data()
 
         self.try_move_vm()
+        self.try_move_cluster()
 
         # We are finished when all of our users' VMs are done
         for vm in self.vms:
@@ -152,6 +165,10 @@ class SmartServer(Server):
                     if m[1] == move[0].group()), None)
                 if other_move:
                     self.swap_vms(move[0], other_move[0])
+
+    # Not implemented for now
+    def try_move_cluster(self):
+        pass
 
     # Move a VM from one place to another
     def move_vm(self, vm, machine):
@@ -224,6 +241,8 @@ class SmartServer(Server):
 
         self.dc.unpause()
 
+# Test with 1 user, 100 VMs, and an empty data center. Simulates the first
+# scenario described in the prompt for DP2.
 def simple_test():
     dc = DataCenter()
     
@@ -240,6 +259,8 @@ def simple_test():
         server.loop()
         time.sleep(1)
 
+# Test with 10 users, each with 20 VMs, in an already crowded data center.
+# This is the standard benchmark we used to compare this scheme to straw men.
 def general_test():
     # first, place random users around the network with very large connections
     dc = DataCenter()
@@ -263,62 +284,7 @@ def general_test():
                 s.loop()
         time.sleep(1)
 
-
-# Fill the datacenter with random VMs, assigning them negative ids
-def fill_all(dc, num_usr, num_vm, max_data):
-    # We want to place one VM in every machine, but in random order.
-    machines = range(num_usr * num_vm)
-    random.shuffle(machines)
-
-    # the user IDs should iterate over {-1, -2, ..., -num_usr + 1}
-    for usr in range(-1, -num_usr, -1):
-        # Initialize VMs
-        vms = [VirtualMachine(usr, -1) for i in range(num_vm)]
-        B = random_B(vms, max_data)
-
-        # activate them and add to the network
-        for vm in vms:
-            m = machines.pop()
-            vm.activate(B)
-            vm.on_transfer_complete = lambda v1, v2: None
-            dc.place(vm, m)
-
-# WIP
-def scenario_1():
-    Machine.NUM_VMs = 2
-    dc = DataCenter()
-
-    # first, place random users around the network with very large connections
-    dc.pause()
-    fill_even(dc, 32, 9, 10**7)
-    dc.unpause()
-
     dc.draw_status()
-    time.sleep(1)  # Wait one second
-
-    # initialize everything
-    servers = [SmartServer(i, 20, dc=dc, max_data=100000) for i in range(10)]
-
-    dc.pause()
-    for server in servers:
-        server.start()
-    dc.unpause()
-
-    # loop through and update every server
-    while len([s for s in servers if not s.finished]):
-        dc.draw_status()
-        for s in servers:
-            if not s.finished:
-                s.loop()
-        time.sleep(1)
-
-# WIPPP
-def scenario_2():
-    pass
-
-# WIPE
-def scenario_3():
-    pass
 
 if __name__ == '__main__':
     general_test()

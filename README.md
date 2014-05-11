@@ -1,10 +1,10 @@
 # DP2 Test Suite
-This is some code to test our DP2 schemes. datacenter.py has the main code for
+This is a system to test our DP2 schemes. datacenter.py has the main code for
 the virtual datacenter, and machine.py has the code for the virtual machine and
-physical machine simulation classes. To try it, run 'python test.py' and watch
-\- it fills the data center with 200 randomly-generated VMs, then adds 10 users
-with 20 VMs each to the network and lets them run to completion. Our solution
-is a WIP in the real\_test and server.py files.
+physical machine simulation classes. To try it, run 'python real\_test.py' and
+watch \- it fills the data center with 200 randomly-generated VMs, then adds 10
+users with 20 VMs each to the network and lets them run to completion. Other 
+schemes can be run with greedy\_test.py, straggler\_test.py, and pairs\_test.py.
 
 ### Outline of datacenter properties:
  - machines has 288 Machine objects indexed by ID - 1/4th the actual number. 
@@ -23,7 +23,7 @@ same way as agg\_links except that each link is only indexed by aggregate
 router number.
  - time is the last time the data center was brought up-to-date.
  
-### Flow:
+### Flow of the DataCenter class:
  - Methods starting with a normal letter (like place()) are public API calls,
    and methods starting with an underscore are private. 
  - The whole system does not actually calculate things in real time, but every
@@ -44,25 +44,25 @@ transfers (delta time * throughput) worth of data on each connection.
    system at any given time. Inside the method are a ton of hacky generator
 expressions, please ignore.
 
-### Some things that will/should change:
- - All the test code is in test.py and real\_test.py in methods. I'm migrating
-   these over to a Server object so that we can just call server.run()
- - There is a bug where sometimes the \_roll\_forward will cause a VM to
-   transfer more data than it actually has left. Right now I have it throw an
-exception if it overflows by more than 100 MB, which rarely happens, but we
-should fix this at some point.
- - The links treat pairs of redundant routers as a single router. This provides
-an OK approximation of how the data center should work, but it isn't exact. This
-should be fixed at some point. (on second thought, lots of things aren't exact
--- I think this is pretty ok for approximating)
+### Flow of the Server class (in test.py):
+ - Servers are initialized with a user ID, a acenter object, number, _n_, of
+   virtual machines, and a noterh number, max\_data, indicating the maximum
+amount of data any VM should have to transfer to any ohter VM. 
+ - The start() function generates a B matrix and places the VMs around the data
+center according to whatever logic the server's scheme uses.
+ - The loop() function updates the state of the data center, re-places VMs if
+necessary, and checks for completion. 
+ - on\_complete() is a callback function that is passed to each VM for execution
+when the VM's data transfers are finished. The default version just checks to 
+see if _all_ transfers are complete, and removes the VM if possible.
 
 ### And remember:
-- "Losers visualize the penalties of failure. Winners visualize the rewards of
-success." - Unknown
-- "The more you want to get something done, the less you call it work" - Richard
-Bach
-- "To accomplish great things we must not only act, but also dream; not only
-plan, but also believe" - Anatole France
-- "If you're going through hell, keep going" - Winston Churchill
-- "An old pond. A frog jumps in. The sound of water." - Matsuo Basho
-- "Sucking at something is the first step to being kinda good at something" - Jake the dog
+ - "Losers visualize the penalties of failure. Winners visualize the rewards of
+   success." \- Unknown
+ - "The more you want to get something done, the less you call it work" -
+   Richard Bach
+ - "To accomplish great things we must not only act, but also dream; not only
+   plan, but also believe" - Anatole France
+ - "If you're going through hell, keep going" - Winston Churchill
+ - "Sucking at something is the first step to being kinda good at something" -
+   Jake the dog
