@@ -1,4 +1,7 @@
 # DP2 Test Suite
+
+Assignment: http://mit.edu/6.033/www/assignments/dp2.html
+
 This is a system to test our DP2 schemes. datacenter.py has the main code for
 the virtual datacenter, and machine.py has the code for the virtual machine and
 physical machine simulation classes. To try it, run 'python real\_test.py' and
